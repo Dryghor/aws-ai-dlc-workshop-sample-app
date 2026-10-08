@@ -66,6 +66,18 @@ test('a back-to-back booking via the API succeeds with 201', async (t) => {
   assert.equal(response.status, 201);
 });
 
+test('two near-simultaneous overlapping requests resolve deterministically: exactly one 201, one 409', async (t) => {
+  const request = await setup(t);
+  const [first, second] = await Promise.all([
+    request('/api/bookings', post(booking)),
+    request('/api/bookings', post({ ...booking, startTime: '2030-06-12T09:30:00Z', endTime: '2030-06-12T10:30:00Z' })),
+  ]);
+  const statuses = [first.status, second.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+  const listed = await request('/api/bookings?roomId=cedar&date=2030-06-12');
+  assert.equal((await listed.json()).length, 1);
+});
+
 test('a non-conflicting API booking still returns the unchanged 201 body shape', async (t) => {
   const request = await setup(t);
   const response = await request('/api/bookings', post(booking));
