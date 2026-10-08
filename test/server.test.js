@@ -36,6 +36,51 @@ test('API lists rooms, creates a booking, and retrieves it', async (t) => {
   assert.deepEqual(await listed.json(), [result]);
 });
 
+test('direct API conflict returns 409 with the conflicting interval, no browser involved', async (t) => {
+  const request = await setup(t);
+  const created = await request('/api/bookings', post(booking));
+  const existing = await created.json();
+  const response = await request('/api/bookings', post({ ...booking, startTime: '2030-06-12T09:30:00Z', endTime: '2030-06-12T10:30:00Z' }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: 'This room is already booked for part of that time.',
+    conflictingBooking: { startTime: existing.startTime, endTime: existing.endTime },
+  });
+});
+
+test('a multi-conflict API request returns 409 with a generic message and no conflictingBooking', async (t) => {
+  const request = await setup(t);
+  await request('/api/bookings', post(booking));
+  await request('/api/bookings', post({ ...booking, startTime: '2030-06-12T10:30:00Z', endTime: '2030-06-12T11:30:00Z' }));
+  const response = await request('/api/bookings', post({ ...booking, startTime: '2030-06-12T09:45:00Z', endTime: '2030-06-12T10:45:00Z' }));
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.error, 'This room is already booked for part of that time.');
+  assert.equal('conflictingBooking' in body, false);
+});
+
+test('a back-to-back booking via the API succeeds with 201', async (t) => {
+  const request = await setup(t);
+  await request('/api/bookings', post(booking));
+  const response = await request('/api/bookings', post({ ...booking, startTime: booking.endTime, endTime: '2030-06-12T11:00:00Z' }));
+  assert.equal(response.status, 201);
+});
+
+test('a non-conflicting API booking still returns the unchanged 201 body shape', async (t) => {
+  const request = await setup(t);
+  const response = await request('/api/bookings', post(booking));
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.deepEqual(Object.keys(body).sort(), ['endTime', 'id', 'organizer', 'roomId', 'startTime', 'title']);
+});
+
+test('an otherwise-invalid request over an existing booking range still returns 400, not 409', async (t) => {
+  const request = await setup(t);
+  await request('/api/bookings', post(booking));
+  const response = await request('/api/bookings', post({ ...booking, endTime: booking.startTime }));
+  assert.equal(response.status, 400);
+});
+
 test('API returns useful validation errors and does not create invalid bookings', async (t) => {
   const request = await setup(t);
   const response = await request('/api/bookings', post({ ...booking, endTime: booking.startTime }));
