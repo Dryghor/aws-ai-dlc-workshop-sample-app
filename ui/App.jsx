@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { composeConflictBanner } from './conflictBanner.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const timeLabel = (value) => value.slice(11, 16);
@@ -9,7 +10,11 @@ const dateLabel = (value) => new Date(`${value}T12:00:00Z`).toLocaleDateString('
 async function api(path, options) {
   const response = await fetch(`/api${path}`, options);
   const body = await response.json();
-  if (!response.ok) throw new Error(body.error ?? 'Unable to complete the request.');
+  if (!response.ok) {
+    const error = new Error(body.error ?? 'Unable to complete the request.');
+    if (body.conflictingBooking) error.conflictingBooking = body.conflictingBooking;
+    throw error;
+  }
   return body;
 }
 
@@ -49,7 +54,7 @@ function BookingForm({ room, date, onBooked }) {
       form.reset();
       onBooked(booking);
     } catch (error) {
-      setError(error.message);
+      setError(composeConflictBanner(error));
     } finally {
       setSaving(false);
     }
@@ -83,7 +88,7 @@ function BookingForm({ room, date, onBooked }) {
               <input name="endTime" type="time" defaultValue="10:00" step="60" required />
             </label>
           </div>
-          {error && <p role="alert" className="rounded-xl bg-white p-3 text-sm text-red-800">{error}</p>}
+          {error && <p role="alert" data-testid="conflict-banner" className="rounded-xl bg-white p-3 text-sm text-red-800">{error}</p>}
           <button className="book-button" type="submit">
             {saving ? 'Booking…' : 'Confirm booking'} <span aria-hidden="true">↗</span>
           </button>
