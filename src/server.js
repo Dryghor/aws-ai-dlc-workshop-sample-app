@@ -57,7 +57,9 @@ export function createAppServer({ store = createStore() } = {}) {
       console.error(error);
       message = 'Something went wrong.';
     }
-    response.status(status).json({ error: message });
+    const body = { error: message };
+    if (error.conflictingBooking) body.conflictingBooking = error.conflictingBooking;
+    response.status(status).json(body);
   });
   return createServer(app);
 }
